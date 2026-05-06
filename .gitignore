@@ -1,0 +1,12 @@
+# Diretórios gerados pelo PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/
+
+# Arquivos de Sistema Operacional
+.DS_Store
+Thumbs.db
+
+# ARQUIVO DE SENHAS (MUITO IMPORTANTE NÃO SUBIR PARA O GITHUB)
+src/secrets.h
