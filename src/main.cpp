@@ -4,7 +4,7 @@
 #include <ArduinoOTA.h>
 #include "secrets.h"
 
-// Mapeamento de Pinos
+// Mapeamento de hardware
 #define PIN_PRESENCE 4
 #define PIN_LED_GREEN 16
 #define PIN_LED_RED 2
@@ -13,38 +13,40 @@
 #define DHTTYPE DHT21
 DHT dht(PIN_DHT, DHTTYPE);
 
-// Configurações de Tempo
-const unsigned long DURACAO_CALIBRACAO = 80000;   // 80 segundos (mude para 5000 para testes)
-const unsigned long TEMPO_LAMPADA_LIGADA = 15000; // 30 segundos
-const unsigned long INTERVALO_LEITURA_DHT = 2000;
+// Parâmetros de operação
+const unsigned long DURACAO_CALIBRACAO = 80000;   // Tempo de acomodação do sensor PIR ao ligar
+const unsigned long TEMPO_LAMPADA_LIGADA = 15000; // Timeout da iluminação por inatividade
+const unsigned long INTERVALO_LEITURA_DHT = 2000; // Taxa de amostragem do sensor ambiental
 const unsigned long INTERVALO_RECONEXAO_WIFI = 10000;
-const float TEMP_ALERTA = 25.0;
+const float TEMP_ALERTA = 25.0; // Limite crítico de temperatura do ambiente
 
-// Variáveis de controle de Estado
-bool sistemaCalibrado = false;
-unsigned long tempoInicioSessao = 0;
-unsigned long tempoUltimaPresenca = 0;
-unsigned long tempoUltimaLeituraDHT = 0;
-unsigned long tempoUltimaTentativaWiFi = 0;
-unsigned long tempoUltimoPisca = 0;
+// Variáveis de estado
+bool isCalibrated = false;
+unsigned long startMillis = 0;
+unsigned long lastMotionTime = 0;
+unsigned long lastDhtRead = 0;
+unsigned long lastWifiAttempt = 0;
+unsigned long lastBlink = 0;
 
-bool lampadaLigada = false;
-float ultimaTemperatura = -100.0;
-float ultimaUmidade = -100.0;
+bool lampState = false;
+float lastTemp = -100.0;
+float lastHum = -100.0;
 
-WiFiServer telnetServer(23);
-WiFiClient telnetClient;
+// Serviço de log remoto
+WiFiServer telnet(23);
+WiFiClient client;
 
-void logMonitor(String msg)
+// Envia mensagens simultaneamente para a serial e para o cliente conectado
+void log(String msg)
 {
   Serial.println(msg);
-  if (telnetClient && telnetClient.connected())
+  if (client && client.connected())
   {
-    telnetClient.println(msg);
+    client.println(msg);
   }
 }
 
-void setupOTA()
+void initOTA()
 {
   ArduinoOTA.setHostname("esp-datacenter");
   ArduinoOTA.begin();
@@ -60,122 +62,117 @@ void setup()
 
   dht.begin();
 
-  // Wi-Fi com IP Estático
   WiFi.config(local_IP, gateway, subnet, primaryDNS);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  // Note que não usamos mais o while(WiFi.status() != WL_CONNECTED) com delay
-  // O loop cuidará da conexão para não travar o início do programa
+  initOTA();
+  telnet.begin();
 
-  setupOTA();
-  telnetServer.begin();
-
-  tempoInicioSessao = millis();
-  Serial.println("\n--- SISTEMA INICIADO ---");
-  Serial.println("Aguardando conexao de rede e calibracao do sensor...");
+  startMillis = millis();
+  Serial.println("\nBooting...");
 }
 
 void loop()
 {
-  unsigned long tempoAtual = millis();
+  unsigned long currentMillis = millis();
 
-  // --- 1. GESTÃO DE REDE (Sempre rodando, nunca bloqueia) ---
+  // Garante a persistência da conexão WiFi de forma não-bloqueante
   if (WiFi.status() != WL_CONNECTED)
   {
-    if (tempoAtual - tempoUltimaTentativaWiFi >= INTERVALO_RECONEXAO_WIFI)
+    if (currentMillis - lastWifiAttempt >= INTERVALO_RECONEXAO_WIFI)
     {
       WiFi.begin(ssid, password);
-      tempoUltimaTentativaWiFi = tempoAtual;
+      lastWifiAttempt = currentMillis;
     }
   }
   else
   {
     ArduinoOTA.handle();
-    if (telnetServer.hasClient())
+
+    // Gerencia o acesso ao console Telnet (permite apenas 1 cliente ativo)
+    if (telnet.hasClient())
     {
-      if (!telnetClient || !telnetClient.connected())
+      if (!client || !client.connected())
       {
-        if (telnetClient)
-          telnetClient.stop();
-        telnetClient = telnetServer.accept();
-        telnetClient.println("=== Console Datacenter Conectado ===");
+        if (client)
+          client.stop();
+        client = telnet.accept();
+        client.println("Console conectado");
       }
       else
       {
-        telnetServer.accept().stop();
+        telnet.accept().stop();
       }
     }
   }
 
-  // --- 2. LÓGICA DE CALIBRAÇÃO NÃO BLOQUEANTE ---
-  if (!sistemaCalibrado)
+  // O sensor PIR precisa de um tempo inicial para estabilizar o sinal infravermelho
+  if (!isCalibrated)
   {
-    // Pisca o LED Verde a cada 500ms para indicar calibração
-    if (tempoAtual - tempoUltimoPisca >= 500)
+    // Feedback visual do status de calibração
+    if (currentMillis - lastBlink >= 500)
     {
-      tempoUltimoPisca = tempoAtual;
+      lastBlink = currentMillis;
       digitalWrite(PIN_LED_GREEN, !digitalRead(PIN_LED_GREEN));
 
-      // Informa o tempo restante no Serial/Telnet para você saber que está vivo
-      long restante = (DURACAO_CALIBRACAO - (tempoAtual - tempoInicioSessao)) / 1000;
-      if (restante >= 0)
+      long timeLeft = (DURACAO_CALIBRACAO - (currentMillis - startMillis)) / 1000;
+      if (timeLeft >= 0)
       {
-        logMonitor("Calibrando sensor... " + String(restante) + "s restantes.");
+        log("Calibrando... " + String(timeLeft) + "s");
       }
     }
 
-    // Verifica se terminou o tempo de calibração
-    if (tempoAtual - tempoInicioSessao >= DURACAO_CALIBRACAO)
+    if (currentMillis - startMillis >= DURACAO_CALIBRACAO)
     {
-      sistemaCalibrado = true;
-      digitalWrite(PIN_LED_GREEN, LOW); // Desliga o pisca-pisca
-      tempoUltimaPresenca = tempoAtual;
-      logMonitor(">>> SISTEMA PRONTO E CALIBRADO <<<");
+      isCalibrated = true;
+      digitalWrite(PIN_LED_GREEN, LOW);
+      lastMotionTime = currentMillis;
+      log("Calibracao concluida");
     }
-
-    return; // Sai do loop aqui, não executa o monitoramento enquanto não calibrar
+    return; // Interrompe o loop até que o sensor esteja confiável
   }
 
-  // --- 3. MONITORAMENTO ATIVO (Só executa após calibração) ---
-
-  // Sensor de Presença
+  // Controle de Iluminação via Presença
   if (digitalRead(PIN_PRESENCE) == LOW)
   {
-    tempoUltimaPresenca = tempoAtual;
-    if (!lampadaLigada)
+    lastMotionTime = currentMillis;
+    if (!lampState)
     {
       digitalWrite(PIN_LED_GREEN, HIGH);
-      lampadaLigada = true;
-      logMonitor("[EVENTO] Movimento detectado. Lampada ligada.");
+      lampState = true;
+      log("Movimento: Lampada ON");
     }
   }
 
-  if (lampadaLigada && (tempoAtual - tempoUltimaPresenca >= TEMPO_LAMPADA_LIGADA))
+  // Desliga a iluminação após o tempo de timeout
+  if (lampState && (currentMillis - lastMotionTime >= TEMPO_LAMPADA_LIGADA))
   {
     digitalWrite(PIN_LED_GREEN, LOW);
-    lampadaLigada = false;
-    logMonitor("[INFO] Ambiente vazio. Lampada desligada.");
+    lampState = false;
+    log("Timeout: Lampada OFF");
   }
 
-  // Sensor de Temperatura
-  if (tempoAtual - tempoUltimaLeituraDHT >= INTERVALO_LEITURA_DHT)
+  // Monitoramento Ambiental
+  if (currentMillis - lastDhtRead >= INTERVALO_LEITURA_DHT)
   {
-    tempoUltimaLeituraDHT = tempoAtual;
+    lastDhtRead = currentMillis;
     float h = dht.readHumidity();
     float t = dht.readTemperature();
 
+    // Valida a leitura do sensor
     if (!isnan(h) && !isnan(t))
     {
-      bool emAlerta = (t >= TEMP_ALERTA);
-      digitalWrite(PIN_LED_RED, emAlerta ? HIGH : LOW);
+      bool alert = (t >= TEMP_ALERTA);
+      digitalWrite(PIN_LED_RED, alert ? HIGH : LOW);
 
-      if (emAlerta || abs(t - ultimaTemperatura) >= 0.5 || abs(h - ultimaUmidade) >= 1.0)
+      // Reduz o volume de logs reportando apenas mudanças significativas ou estados críticos
+      if (alert || abs(t - lastTemp) >= 0.5 || abs(h - lastHum) >= 1.0)
       {
-        ultimaTemperatura = t;
-        ultimaUmidade = h;
-        String msg = "Status: " + String(t, 1) + "C, " + String(h, 1) + "%";
-        logMonitor(emAlerta ? "[ALERTA] " + msg : msg);
+        lastTemp = t;
+        lastHum = h;
+        String msg = "T: " + String(t, 1) + "C H: " + String(h, 1) + "%";
+        log(alert ? "ALERTA - " + msg : msg);
       }
     }
   }
