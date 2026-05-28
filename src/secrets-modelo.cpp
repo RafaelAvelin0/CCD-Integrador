@@ -1,11 +1,9 @@
-#ifndef SECRETS_H
-#define SECRETS_H
-#include <ESP8266WiFi.h>
+#include "secrets.h"
 
 // ⚠️ INSTRUÇÕES:
-// 1. Renomeie este arquivo para "secrets.h"
+// 1. Renomeie este arquivo para "secrets.cpp"
 // 2. Preencha com os dados reais da sua rede
-// 3. O arquivo "secrets.h" será ignorado pelo git (não subirá para o GitHub)
+// 3. O arquivo "secrets.cpp" será ignorado pelo git (não subirá para o GitHub)
 
 // Credenciais do Wi-Fi
 const char* ssid = "NOME_DA_SUA_REDE";
@@ -23,5 +21,3 @@ const char* mqtt_server = "IP_OU_ENDEREÇO_DO_BROKER";
 const int mqtt_port = "PORTA_DO_BROKER";
 const char* mqtt_user = "USUARIO";
 const char* mqtt_password = "SENHA";
-
-#endif

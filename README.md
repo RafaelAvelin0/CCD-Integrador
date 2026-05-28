@@ -73,26 +73,48 @@ O firmware publica os dados no tópico:
 piredes2026/datacenter/telemetria
 ```
 
-O payload JSON enviado contém, entre outros campos:
+### Exemplo de payload enviado
+```json
+{
+  "team": "piredes2026",
+  "device": "ESP8266-Datacenter",
+  "status": "ONLINE",
+  "ip": "192.168.1.50",
+  "ssid": "REDE_WIFI",
+  "sensor": "DHT21+PIR",
+  "data": {
+    "temperature": 23.4,
+    "humidity": 58.2,
+    "dew_point": 14.5,
+    "presence": "ON"
+  },
+  "timestamp": "2026-05-13T14:22:31"
+}
+```
 
-* `team`
-* `device`
-* `ip`
-* `ssid`
-* `sensor`
-* `temperature`
-* `humidity`
-* `dew_point`
-* `presence`
-* `timestamp`
+## Last Will and Testament (LWT)
+
+Caso o ESP8266 perca energia ou conexão inesperadamente, o broker MQTT publica automaticamente:
+```json
+{
+  "team":"piredes2026",
+  "device":"ESP8266-Datacenter",
+  "status":"OFFLINE",
+  "data":{
+    "presence":"DESCONHECIDO"
+  }
+}
+```
+
+>As mensagens são publicadas com flag retain, permitindo que o Home Assistant visualize imediatamente o último estado conhecido do dispositivo.
 
 ## 🔐 Configuração de credenciais
 
-O projeto usa um arquivo externo chamado `secrets.h`, criado a partir do modelo `secrets-modelo.h`.
+O projeto usa um arquivo externo chamado `secrets.cpp`, criado a partir do modelo `secrets-modelo.cpp`.
 
 Antes de compilar:
 
-1. renomeie `secrets-modelo.h` para `secrets.h`;
+1. renomeie `secrets-modelo.cpp` para `secrets.cpp`;
 2. preencha SSID e senha do Wi-Fi;
 3. configure o IP estático;
 4. informe os dados do broker MQTT.
@@ -118,11 +140,11 @@ git clone https://github.com/RafaelAvelin0/CCD-Integrador.git
     
     *   Navegue até à pasta ``src/.``
         
-    *   Renomeie o arquivo ``secrets.example.h`` para ``secrets.h.``
+    *   Renomeie o arquivo ``secrets.example.cpp`` para ``secrets.cpp``.
         
-    *   Edite o arquivo ``secrets.h`` preenchendo o SSID e Password do seu Wi-Fi, além da faixa de IP Estático da rede do datacenter.
+    *   Edite o arquivo ``secrets.cpp`` preenchendo o SSID e Password do seu Wi-Fi, além da faixa de IP Estático da rede do datacenter.
         
-    *   _O arquivo ``secrets.h`` está incluído no ``.gitignore`` e não será partilhado publicamente._
+    *   _O arquivo ``secrets.cpp`` está incluído no ``.gitignore`` e não será partilhado publicamente._
         
 3.  **Primeira Gravação (Via Cabo USB-Serial):**
     
@@ -148,7 +170,7 @@ Com o dispositivo conectado à rede, é possível acompanhar os logs via Telnet 
 nc 192.168.1.50 23
 ```
 
-Substitua o IP pelo endereço configurado em `secrets.h`.
+Substitua o IP pelo endereço configurado em `secrets.cpp`.
 
 ## 🧩 Dependências usadas no código
 

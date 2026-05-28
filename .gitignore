@@ -9,4 +9,4 @@
 Thumbs.db
 
 # ARQUIVO DE SENHAS (MUITO IMPORTANTE NÃO SUBIR PARA O GITHUB)
-src/secrets.h
+src/secrets.cpp
