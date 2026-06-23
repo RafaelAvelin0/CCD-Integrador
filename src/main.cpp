@@ -1,7 +1,7 @@
 /**
  * PROJETO INTEGRADOR - Monitoramento de Datacenter
  * Módulo: ESP8266 (Nó Sensor)
- * Funcionalidades: Leitura de Temperatura/Umidade (DHT21), Presença (PIR), 
+ * Funcionalidades: Leitura de Temperatura/Umidade (DHT21), Presença (PIR),
  * Cálculo de Ponto de Orvalho, Comunicação MQTT e Atualização OTA.
  */
 
@@ -9,10 +9,10 @@
 #include <DHT.h>
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
-#include "secrets.h" // Arquivo externo contendo senhas e IPs (Segurança)
-#include "config.h"  // Mapeamento de pinos e tempos do sistema
-#include "globals.h" // Instâncias de rede e variáveis compartilhadas
-#include "utils.h"   // Funções matemáticas e de tempo
+#include "secrets.h"   // Arquivo externo contendo senhas e IPs (Segurança)
+#include "config.h"    // Mapeamento de pinos e tempos do sistema
+#include "globals.h"   // Instâncias de rede e variáveis compartilhadas
+#include "utils.h"     // Funções matemáticas e de tempo
 #include "telemetry.h" // Lógica de envio MQTT e logs
 
 #define DHTTYPE DHT21 // Especifica o modelo do sensor
@@ -30,8 +30,8 @@ unsigned long tempoUltimaLeituraDHT = 0;
 unsigned long tempoUltimaTentativaWiFi = 0;
 unsigned long tempoUltimaTentativaMQTT = 0;
 unsigned long tempoUltimoPisca = 0;
-// unsigned long tempoUltimoEnvioMQTT = 0; // Armazena quando o último JSON foi enviado (Movida para globals.cpp)
-int ultimoRestanteLog = -1; // Variável para evitar logs repetidos durante a calibração
+int ultimoRestanteLog = -1;
+int tentativasConexaoWiFi = 0;
 
 // Variáveis de memória para comparar se houve variação no clima
 bool lampadaLigada = false;
@@ -76,6 +76,9 @@ void setup()
   setupOTA();
   telnetServer.begin();
 
+  // Ativa o Watchdog de software do ESP8266 com tempo padrão
+  ESP.wdtEnable(0);
+
   tempoInicioSessao = millis(); // Marca a hora que o dispositivo ligou
 }
 
@@ -84,6 +87,9 @@ void setup()
 // ==========================================
 void loop()
 {
+  // Alimenta o Watchdog no início de cada ciclo para evitar resets indesejados
+  ESP.wdtFeed();
+
   unsigned long tempoAtual = millis(); // Captura o tempo atual em cada ciclo
 
   // ----------------------------------------
@@ -96,10 +102,25 @@ void loop()
     {
       WiFi.begin(ssid, password);
       tempoUltimaTentativaWiFi = tempoAtual;
+
+      tentativasConexaoWiFi++;
+      Serial.println("[WIFI] Tentativa de reconexao: " + String(tentativasConexaoWiFi));
+
+      if (tentativasConexaoWiFi >= 10)
+      {
+        Serial.println("[ERRO] Falha ao reconectar ao Wi-Fi apos 10 tentativas. Reiniciando o sistema...");
+        delay(1000);   // Pausa breve para garantir a exibicao do log serial
+        ESP.restart(); // Reinicia o microcontrolador
+      }
     }
   }
   else // Se o Wi-Fi estiver conectado:
   {
+    if (tentativasConexaoWiFi > 0)
+    {
+      tentativasConexaoWiFi = 0; // Reseta o contador ao conectar com sucesso
+    }
+
     ArduinoOTA.handle(); // Fica escutando pedidos de atualização de firmware
 
     // Sincroniza o relógio na primeira vez que conectar (Fuso UTC-3)
@@ -128,7 +149,8 @@ void loop()
     {
       if (!telnetClient || !telnetClient.connected())
       {
-        if (telnetClient) telnetClient.stop();
+        if (telnetClient)
+          telnetClient.stop();
         telnetClient = telnetServer.accept();
         telnetClient.println("=== Console Datacenter Conectado ===");
       }
@@ -159,7 +181,7 @@ void loop()
     if (tempoAtual - tempoInicioSessao >= DURACAO_CALIBRACAO)
     {
       sistemaCalibrado = true;
-      digitalWrite(PIN_LED_GREEN, LOW); 
+      digitalWrite(PIN_LED_GREEN, LOW);
       tempoUltimaPresenca = tempoAtual;
       logMonitor(">>> SISTEMA PRONTO E CALIBRADO <<<");
     }
@@ -170,7 +192,7 @@ void loop()
   // ETAPA 3: MONITORAMENTO DOS SENSORES
   // ----------------------------------------
 
-  // A. EVENTOS DO SENSOR DE PRESENÇA (Gatilho Imediato)
+  // A. EVENTOS DO SENSOR DE PRESENÇA
   if (digitalRead(PIN_PRESENCE) == LOW) // LOW indica movimento detectado
   {
     tempoUltimaPresenca = tempoAtual; // Renova o cronômetro de presença

@@ -3,6 +3,13 @@
 #include "utils.h"
 #include "secrets.h"
 
+// Função auxiliar para gerar o nome do dispositivo com os 4 últimos dígitos do MAC
+String getDeviceName() {
+  String mac = WiFi.macAddress();
+  mac.replace(":", "");
+  return "ESP8266-" + mac.substring(mac.length() - 4) + "-Datacenter";
+}
+
 void logMonitor(String msg)
 {
   Serial.println(msg);
@@ -15,20 +22,24 @@ void logMonitor(String msg)
 void reconnectMQTT()
 {
   logMonitor("Tentando conexao MQTT no IP: " + String(mqtt_server));
-  String clientId = "ESP8266-Datacenter-" + String(random(0xffff), HEX);
+  
+  String deviceName = getDeviceName();
+  // Inclui o nome do dispositivo na ClientID para facilitar a identificação no Broker
+  String clientId = deviceName + "-" + String(random(0xffff), HEX);
 
   // ========================================================
   // CONFIGURAÇÃO DO LAST WILL AND TESTAMENT (LWT)
   // ========================================================
   // Payload JSON que o broker vai publicar automaticamente se o ESP8266 cair
-  const char* willMessage = "{"
-                            "\"team\":\"piredes2026\","
-                            "\"device\":\"ESP8266-Datacenter\","
-                            "\"status\":\"OFFLINE\","
-                            "\"data\":{"
-                            "\"presence\":\"DESCONHECIDO\""
-                            "}"
-                            "}";
+  String willMessageStr = "{"
+                          "\"team\":\"piredes2026\","
+                          "\"device\":\"" + deviceName + "\","
+                          "\"status\":\"OFFLINE\","
+                          "\"data\":{"
+                          "\"presence\":\"DESCONHECIDO\""
+                          "}"
+                          "}";
+  const char* willMessage = willMessageStr.c_str();
   uint8_t willQos = 0;       // Qualidade de Serviço 0 (padrão)
   boolean willRetain = true; // Define que a mensagem de "morte" deve ficar retida
 
@@ -49,11 +60,13 @@ void enviarPayloadJSON(float t, float h, float orvalho, const char *statusPresen
   if (!mqttClient.connected())
     return;
 
+  String deviceName = getDeviceName();
+
   char payload[512];
   snprintf(payload, sizeof(payload),
            "{"
            "\"team\":\"piredes2026\","
-           "\"device\":\"ESP8266-Datacenter\","
+           "\"device\":\"%s\","
            "\"status\":\"ONLINE\","
            "\"ip\":\"%s\","
            "\"ssid\":\"%s\","
@@ -66,6 +79,7 @@ void enviarPayloadJSON(float t, float h, float orvalho, const char *statusPresen
            "},"
            "\"timestamp\":\"%s\""
            "}",
+           deviceName.c_str(),
            WiFi.localIP().toString().c_str(),
            WiFi.SSID().c_str(),
            t, h, orvalho, statusPresenca,

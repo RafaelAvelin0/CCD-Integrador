@@ -9,11 +9,11 @@
 
 // Configurações de Tempo
 const unsigned long DURACAO_CALIBRACAO = 80000;
-const unsigned long TEMPO_LAMPADA_LIGADA = 15000;
+const unsigned long TEMPO_LAMPADA_LIGADA = 600000;
 const unsigned long INTERVALO_LEITURA_DHT = 2000;
 const unsigned long INTERVALO_RECONEXAO_WIFI = 10000;
 const unsigned long INTERVALO_RECONEXAO_MQTT = 10000;
-const unsigned long INTERVALO_HEARTBEAT = 60000; // 1 minuto para envio fixo (estabilidade)
+const unsigned long INTERVALO_HEARTBEAT = 60000;
 const float TEMP_ALERTA = 25.0;
 
 #endif
