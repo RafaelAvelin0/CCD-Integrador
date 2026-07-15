@@ -5,5 +5,6 @@
 
 float calcularPontoOrvalho(float temp, float umid);
 String getTimestamp();
+String getUptimeFormatado();
 
 #endif

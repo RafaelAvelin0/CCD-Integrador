@@ -9,7 +9,7 @@
 
 // Configurações de Tempo
 const unsigned long DURACAO_CALIBRACAO = 80000;
-const unsigned long TEMPO_LAMPADA_LIGADA = 600000;
+const unsigned long DEFAULT_TIMEOUT_PRESENCA = 600000; 
 const unsigned long INTERVALO_LEITURA_DHT = 2000;
 const unsigned long INTERVALO_RECONEXAO_WIFI = 10000;
 const unsigned long INTERVALO_RECONEXAO_MQTT = 10000;

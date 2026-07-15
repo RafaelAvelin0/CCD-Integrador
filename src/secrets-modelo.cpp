@@ -21,3 +21,7 @@ const char* mqtt_server = "IP_OU_ENDEREÇO_DO_BROKER";
 const int mqtt_port = "PORTA_DO_BROKER";
 const char* mqtt_user = "USUARIO";
 const char* mqtt_password = "SENHA";
+
+// Credenciais do Servidor Web (Acesso ao OTA)
+const char* http_user = "USUARIO WEB";
+const char* http_password = "SENHA WEB";

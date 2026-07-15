@@ -2,18 +2,19 @@
  * PROJETO INTEGRADOR - Monitoramento de Datacenter
  * Módulo: ESP8266 (Nó Sensor)
  * Funcionalidades: Leitura de Temperatura/Umidade (DHT21), Presença (PIR),
- * Cálculo de Ponto de Orvalho, Comunicação MQTT e Atualização OTA.
+ * Cálculo de Ponto de Orvalho, Comunicação MQTT e Servidor HTTP (Dashboard + OTA).
  */
 
 #include <Arduino.h>
 #include <DHT.h>
 #include <ESP8266WiFi.h>
-#include <ArduinoOTA.h>
+#include <Updater.h>   // Biblioteca Nativa para OTA via Web
 #include "secrets.h"   // Arquivo externo contendo senhas e IPs (Segurança)
 #include "config.h"    // Mapeamento de pinos e tempos do sistema
 #include "globals.h"   // Instâncias de rede e variáveis compartilhadas
 #include "utils.h"     // Funções matemáticas e de tempo
 #include "telemetry.h" // Lógica de envio MQTT e logs
+#include "webpage.h"   // CÓDIGOS HTML DAS PÁGINAS WEB
 
 #define DHTTYPE DHT21 // Especifica o modelo do sensor
 DHT dht(PIN_DHT, DHTTYPE);
@@ -33,18 +34,61 @@ unsigned long tempoUltimoPisca = 0;
 int ultimoRestanteLog = -1;
 int tentativasConexaoWiFi = 0;
 
-// Variáveis de memória para comparar se houve variação no clima
+// Variáveis de memória para a lógica de acionamento MQTT e presença
 bool lampadaLigada = false;
-float ultimaTemperatura = -100.0;
-float ultimaUmidade = -100.0;
+float ultimaTempEnviada = -100.0;
+float ultimaUmidEnviada = -100.0;
 
-/**
- * Configura o Over-The-Air, permitindo envio de código via Wi-Fi pelo PlatformIO.
- */
-void setupOTA()
-{
-  ArduinoOTA.setHostname("esp-datacenter");
-  ArduinoOTA.begin();
+// ==========================================
+// ROTAS DO SERVIDOR WEB
+// ==========================================
+
+void handleRoot() {
+  String html = FPSTR(html_dashboard);
+  
+  html.replace("{{WIFI_RSSI}}", String(WiFi.RSSI()));
+  html.replace("{{MQTT_STATUS}}", mqttClient.connected() ? "ON" : "OFF");
+  html.replace("{{MQTT_COLOR}}", mqttClient.connected() ? "green" : "red");
+  
+  html.replace("{{PRESENCA}}", lampadaLigada ? "MOVIMENTO DETECTADO" : "VAZIO");
+  html.replace("{{PIR_COLOR}}", lampadaLigada ? "#e74c3c" : "#2d3748");
+  html.replace("{{TIMEOUT}}", String(tempoLampadaLigada / 1000));
+  
+  html.replace("{{TEMP}}", String(temperaturaAtual, 1));
+  html.replace("{{UMID}}", String(umidadeAtual, 1));
+  
+  html.replace("{{IP}}", WiFi.localIP().toString());
+  html.replace("{{SSID}}", WiFi.SSID());
+  html.replace("{{MAC}}", WiFi.macAddress());
+  html.replace("{{BOOTS}}", String(contadorBoots));
+  html.replace("{{UPTIME}}", getUptimeFormatado());
+  
+  server.send(200, "text/html", html);
+}
+
+void handleConf() {
+  if (!server.authenticate(http_user, http_password)) return server.requestAuthentication();
+  
+  String html = FPSTR(html_config);
+  html.replace("{{TIMEOUT}}", String(tempoLampadaLigada / 1000));
+  server.send(200, "text/html", html);
+}
+
+void handleSaveConf() {
+  if (!server.authenticate(http_user, http_password)) return server.requestAuthentication();
+  
+  if (server.hasArg("timeout")) {
+    int novoTimeoutSec = server.arg("timeout").toInt();
+    if (novoTimeoutSec >= 10 && novoTimeoutSec <= 3600) {
+      tempoLampadaLigada = novoTimeoutSec * 1000UL;
+      tempoUltimoEnvioMQTT = 0; // Força reenvio de telemetria
+      logMonitor("-> Timeout alterado via Web para: " + String(novoTimeoutSec) + "s");
+    }
+  }
+  
+  // Redireciona o utilizador de volta para o Dashboard
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/plain", "");
 }
 
 // ==========================================
@@ -57,6 +101,13 @@ void setup()
 
   Serial.println("\n\n=== BOOT DO SISTEMA ===");
 
+  // Lógica para ler, incrementar e gravar o Contador de Boots na memória RTC do ESP8266
+  ESP.rtcUserMemoryRead(64, (uint32_t*)&contadorBoots, sizeof(contadorBoots));
+  // Proteção contra lixo de memória caso a placa nunca tenha sido gravada
+  if (contadorBoots > 1000000) contadorBoots = 0; 
+  contadorBoots++;
+  ESP.rtcUserMemoryWrite(64, (uint32_t*)&contadorBoots, sizeof(contadorBoots));
+
   // Configuração dos Pinos
   pinMode(PIN_PRESENCE, INPUT_PULLUP);
   pinMode(PIN_LED_GREEN, OUTPUT);
@@ -66,15 +117,61 @@ void setup()
 
   // Configuração do MQTT
   mqttClient.setServer(mqtt_server, mqtt_port);
-  mqttClient.setBufferSize(512); // Aumenta o limite de mensagem para suportar nosso JSON
+  mqttClient.setBufferSize(1536); 
+  mqttClient.setCallback(mqttCallback); 
 
-  // Configuração do Wi-Fi com IP Estático (Definido no secrets.h)
+  // Configuração do Wi-Fi com IP Estático
+  WiFi.mode(WIFI_STA); 
   WiFi.config(local_IP, gateway, subnet, primaryDNS);
-  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  setupOTA();
   telnetServer.begin();
+
+  // ----------------------------------------
+  // DEFINIÇÃO DAS ROTAS HTTP DO SERVIDOR WEB
+  // ----------------------------------------
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/conf", HTTP_GET, handleConf);
+  server.on("/save_conf", HTTP_POST, handleSaveConf);
+  
+  // Rota para mostrar a página de Atualização (GET)
+  server.on("/update", HTTP_GET, []() {
+    if (!server.authenticate(http_user, http_password)) return server.requestAuthentication();
+    server.send(200, "text/html", FPSTR(html_update));
+  });
+
+  // Rota para processar a receção do Firmware (POST)
+  server.on("/update_fw", HTTP_POST, []() {
+    if (!server.authenticate(http_user, http_password)) return server.requestAuthentication();
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError()) ? "FALHA NA ATUALIZACAO. Tente novamente." : "ATUALIZACAO CONCLUIDA! O ESP sera reiniciado em instantes.");
+    delay(1000);
+    ESP.restart();
+  }, []() {
+    // Bloco de Execução Interna durante o Upload do Ficheiro
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      Serial.printf("\nIniciando OTA Web: %s\n", upload.filename.c_str());
+      // Configura o espaço para receber apenas Firmware (U_FLASH) e bloqueia SPIFFS
+      uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+      if (!Update.begin(maxSketchSpace, U_FLASH)) {
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) {
+        Serial.printf("OTA Concluido. Tamanho: %u bytes\n", upload.totalSize);
+      } else {
+        Update.printError(Serial);
+      }
+    }
+  });
+
+  server.begin();
+  Serial.println("Servidor Web Iniciado na porta 80");
 
   // Ativa o Watchdog de software do ESP8266 com tempo padrão
   ESP.wdtEnable(0);
@@ -91,6 +188,9 @@ void loop()
   ESP.wdtFeed();
 
   unsigned long tempoAtual = millis(); // Captura o tempo atual em cada ciclo
+
+  // Escuta requisições HTTP (Abre o site)
+  server.handleClient();
 
   // ----------------------------------------
   // ETAPA 1: GESTÃO DE REDE E SERVIÇOS
@@ -120,8 +220,6 @@ void loop()
     {
       tentativasConexaoWiFi = 0; // Reseta o contador ao conectar com sucesso
     }
-
-    ArduinoOTA.handle(); // Fica escutando pedidos de atualização de firmware
 
     // Sincroniza o relógio na primeira vez que conectar (Fuso UTC-3)
     if (!ntpConfigurado)
@@ -207,13 +305,15 @@ void loop()
       float t = dht.readTemperature();
       if (!isnan(h) && !isnan(t))
       {
+        ultimaTempEnviada = t;
+        ultimaUmidEnviada = h;
         enviarPayloadJSON(t, h, calcularPontoOrvalho(t, h), "ON");
       }
     }
   }
 
   // Desativa a presença após o tempo limite configurado sem detectar movimento
-  if (lampadaLigada && (tempoAtual - tempoUltimaPresenca >= TEMPO_LAMPADA_LIGADA))
+  if (lampadaLigada && (tempoAtual - tempoUltimaPresenca >= tempoLampadaLigada))
   {
     digitalWrite(PIN_LED_GREEN, LOW);
     lampadaLigada = false;
@@ -223,6 +323,8 @@ void loop()
     float t = dht.readTemperature();
     if (!isnan(h) && !isnan(t))
     {
+      ultimaTempEnviada = t;
+      ultimaUmidEnviada = h;
       enviarPayloadJSON(t, h, calcularPontoOrvalho(t, h), "OFF");
     }
   }
@@ -240,16 +342,23 @@ void loop()
       bool emAlerta = (t >= TEMP_ALERTA);
       digitalWrite(PIN_LED_RED, emAlerta ? HIGH : LOW); // Acende LED vermelho se houver superaquecimento
 
-      // LÓGICA DE ECONOMIA DE REDE: O pacote só é enviado ao servidor se atender a 1 de 3 critérios:
-      // 1. O datacenter está superaquecendo (emAlerta)
-      // 2. A temperatura mudou de forma relevante (0.5 graus)
+      // Salva as leituras nas variáveis globais para a página Web mostrar em tempo real
+      temperaturaAtual = t;
+      umidadeAtual = h;
+
+      // LÓGICA DE ECONOMIA DE REDE - AVALIAÇÃO DE DISPARO
+      bool mudou = (t != ultimaTempEnviada);
+      bool variacaoSignificativa = (abs(t - ultimaTempEnviada) >= 0.5);
+      bool estourouHeartbeat = (tempoAtual - tempoUltimoEnvioMQTT >= INTERVALO_HEARTBEAT);
+
+      // O pacote só é enviado ao servidor se atender a 1 de 3 critérios:
+      // 1. O datacenter está superaquecendo (emAlerta) E a temperatura sofreu qualquer alteração
+      // 2. A temperatura mudou de forma relevante (0.5 graus) em modo normal
       // 3. Passou 1 minuto desde o último envio (Heartbeat - para garantir que o sistema não travou)
-      if (emAlerta ||
-          abs(t - ultimaTemperatura) >= 0.5 ||
-          (tempoAtual - tempoUltimoEnvioMQTT >= INTERVALO_HEARTBEAT))
+      if ((emAlerta && mudou) || (!emAlerta && variacaoSignificativa) || estourouHeartbeat)
       {
-        ultimaTemperatura = t;
-        ultimaUmidade = h;
+        ultimaTempEnviada = t;
+        ultimaUmidEnviada = h;
 
         float orvalho = calcularPontoOrvalho(t, h);
         enviarPayloadJSON(t, h, orvalho, lampadaLigada ? "ON" : "OFF");
