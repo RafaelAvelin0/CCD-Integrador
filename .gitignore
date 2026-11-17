@@ -10,3 +10,4 @@ Thumbs.db
 
 # ARQUIVO DE SENHAS (MUITO IMPORTANTE NÃO SUBIR PARA O GITHUB)
 src/secrets.cpp
+data/ca.crt

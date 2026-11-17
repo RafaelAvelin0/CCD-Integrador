@@ -13,7 +13,7 @@ const unsigned long DEFAULT_TIMEOUT_PRESENCA = 600000;
 const unsigned long INTERVALO_LEITURA_DHT = 2000;
 const unsigned long INTERVALO_RECONEXAO_WIFI = 10000;
 const unsigned long INTERVALO_RECONEXAO_MQTT = 10000;
-const unsigned long INTERVALO_HEARTBEAT = 60000;
-const float TEMP_ALERTA = 25.0;
+//const unsigned long INTERVALO_HEARTBEAT = 60000; Será definido na página de configuração web ou via MQTT
+const float TEMP_ALERTA = 28.0;
 
 #endif

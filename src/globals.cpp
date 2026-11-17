@@ -5,13 +5,15 @@
 WiFiServer telnetServer(23);
 WiFiClient telnetClient;
 
-WiFiClient espClient;
+WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 
 ESP8266WebServer server(80);
 
-const char *topico_telemetria = "piredes2026/datacenter/telemetria";
-const char *topico_timeout_set = "piredes2026/datacenter/timeout/set"; 
+String topico_telemetria;
+String topico_timeout_set;
+String topico_heartbeat_set;
+String topico_ota_url;
 
 // Armazena quando o último JSON foi enviado 
 unsigned long tempoUltimoEnvioMQTT = 0;
@@ -24,3 +26,8 @@ uint32_t contadorBoots = 0;
 // Variáveis da interface Web
 float temperaturaAtual = 0.0;
 float umidadeAtual = 0.0;
+unsigned long intervaloHeartbeat = 60000; // 60 segundos padrão
+
+// Variáveis de configuração do sistema para OTA http
+bool pendenteOTA = false;
+String urlOTA = "";

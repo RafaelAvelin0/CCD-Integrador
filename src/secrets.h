@@ -6,11 +6,11 @@
 extern const char* ssid;
 extern const char* password;
 
-// Configuração de IP Estático
+/* Configuração de IP Estático
 extern IPAddress local_IP;
 extern IPAddress gateway;
 extern IPAddress subnet;
-extern IPAddress primaryDNS;
+extern IPAddress primaryDNS;*/
 
 // Credenciais MQTT (Home Assistant)
 extern const char* mqtt_server;
@@ -21,5 +21,8 @@ extern const char* mqtt_password;
 // Credenciais HTTP para acesso à interface web do ESP8266
 extern const char* http_user;
 extern const char* http_password;
+
+// Certificado SSL embutido no código
+extern const char ca_cert[] PROGMEM;
 
 #endif

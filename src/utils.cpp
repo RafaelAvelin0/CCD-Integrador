@@ -15,10 +15,10 @@ String getTimestamp()
 {
   time_t now = time(nullptr);
   if (now < 100000)
-    return "1970-01-01T00:00:00";
+    return "1970-01-01T00:00:00-03:00";
   struct tm *timeinfo = localtime(&now);
-  char buffer[30];
-  strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S", timeinfo);
+  char buffer[35];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S-03:00", timeinfo);
   return String(buffer);
 }
 
