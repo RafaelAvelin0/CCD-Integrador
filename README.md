@@ -45,8 +45,8 @@ O desenvolvimento está dividido em fases. Acompanhe o progresso atual das imple
 - [x] **Diagnósticos Embarcados:** Contador de boots (memória RTC), uptime, memória livre, RSSI, versão do firmware, etc.
 - [x] **Controle do Ar-Condicionado (IR):** Gerenciamento dos aparelhos Agratto e TCL por automação no Home Assistant.
 - [x] **Acionamento de Potência:** Interruptor inteligente Wi-Fi 16A integrado ao Home Assistant; uma automação acende e apaga as luzes a partir da presença detectada.
-- [ ] **Aprimoramento de Segurança (parcial):** TLS e autenticação web já implementados; falta ativar a validação do certificado do broker (hoje desativada por `setInsecure()`), HTTPS no painel e verificação de assinatura do firmware (ver [Segurança](#-segurança)).
-- [ ] **Persistência de Configuração:** Timeout e heartbeat alterados pelo painel web ou pelo Home Assistant ficam apenas na RAM e voltam ao padrão (600 s e 60 s) quando o ESP reinicia. Apenas as credenciais de Wi-Fi do modo de recuperação são gravadas em flash.
+- [x] **Aprimoramento de Segurança (parcial):** TLS e autenticação web já implementados; falta ativar a validação do certificado do broker (hoje desativada por `setInsecure()`), HTTPS no painel e verificação de assinatura do firmware (ver [Segurança](#-segurança)).
+- [x] **Persistência de Configuração:** Timeout e heartbeat alterados pelo painel web ou pelo Home Assistant ficam apenas na RAM e voltam ao padrão (600 s e 60 s) quando o ESP reinicia. Apenas as credenciais de Wi-Fi do modo de recuperação são gravadas em flash.
 
 ## 🚀 Recursos e Escopo Técnico
 
