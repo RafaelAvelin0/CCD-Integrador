@@ -285,10 +285,10 @@ void reconnectMQTT() {
   String willMessageStr = "{"
     "\"device\":\"" + deviceName + "\","
     "\"status\":\"OFFLINE\","
-    "\"data\":{\"temperature\":0.0,\"humidity\":0.0,\"dew_point\":0.0,\"presence\":\"DESCONHECIDO\"},"
-    "\"config\":{\"timeout\":0,\"heartbeat\":0},"
+    "\"data\":{\"temperature\":0.0,\"humidity\":0.0,\"dew_point\":0.0,\"presence\":\"OFF\"},"
+    "\"config\":{\"timeout\":600,\"heartbeat\":60},"
     "\"diagnostics\":{\"ip\":\"\",\"rssi\":0,\"boots\":0,\"hardware\":\"MSBOX v1.0\",\"mac\":\"\",\"mcu\":\"ESP-12F\",\"free_mem\":0,\"ssid\":\"\",\"teleperiod\":0,\"uptime\":\"\",\"version\":\"Monitor_Ambiental_v1.0\"},"
-    "\"timestamp\":\"\""
+    "\"timestamp\":\"1970-01-01T00:00:00-03:00\""
   "}";
   
   const char* willMessage = willMessageStr.c_str();
